@@ -193,7 +193,6 @@ void Scheduler::RequestRenderpass(const Framebuffer* framebuffer) {
         }
 
         const u32 num_color = framebuffer->NumColorAttachments();
-        const auto& color_views = framebuffer->ColorAttachments();
         const bool has_depth = framebuffer->HasAspectDepthBit();
         const bool has_stencil = framebuffer->HasAspectStencilBit();
         const VkImageView depth_view = framebuffer->DepthAttachment();
