@@ -1271,7 +1271,7 @@ void TextureCacheRuntime::BlitImage(Framebuffer* dst_framebuffer, ImageView& dst
 }
 
 void TextureCacheRuntime::ConvertImage(Framebuffer* dst, ImageView& dst_view, ImageView& src_view) {
-    if (!dst->RenderPass()) {
+    if (!dst->RenderPass() && !device.IsKhrDynamicRenderingSupported()) {
         return;
     }
 
@@ -2450,7 +2450,7 @@ Framebuffer::Framebuffer(TextureCacheRuntime& runtime, std::span<ImageView*, NUM
           .height = key.size.height,
       }} {
     CreateFramebuffer(runtime, color_buffers, depth_buffer, key.is_rescaled);
-    if (runtime.device.HasDebuggingToolAttached()) {
+    if (runtime.device.HasDebuggingToolAttached() && framebuffer) {
         framebuffer.SetObjectNameEXT(VideoCommon::Name(key).c_str());
     }
 }
@@ -2493,6 +2493,12 @@ void Framebuffer::CreateFramebuffer(TextureCacheRuntime& runtime,
         image_ranges[num_images] = MakeSubresourceRange(color_buffer);
         rt_map[index] = num_images;
         samples = color_buffer->Samples();
+        color_attachments[index] = color_buffer->RenderTarget();
+        color_attachment_formats[index] =
+            MaxwellToVK::SurfaceFormat(runtime.device, FormatType::Optimal, true,
+                                       color_buffer->format)
+                .format;
+        num_color_attachments = static_cast<u32>(index + 1);
         ++num_images;
     }
     const size_t num_colors = attachments.size();
@@ -2508,6 +2514,11 @@ void Framebuffer::CreateFramebuffer(TextureCacheRuntime& runtime,
         const VkImageSubresourceRange subresource_range = MakeSubresourceRange(depth_buffer);
         image_ranges[num_images] = subresource_range;
         samples = depth_buffer->Samples();
+        depth_attachment = depth_buffer->RenderTarget();
+        depth_attachment_format =
+            MaxwellToVK::SurfaceFormat(runtime.device, FormatType::Optimal, true,
+                                       depth_buffer->format)
+                .format;
         ++num_images;
         has_depth = (subresource_range.aspectMask & VK_IMAGE_ASPECT_DEPTH_BIT) != 0;
         has_stencil = (subresource_range.aspectMask & VK_IMAGE_ASPECT_STENCIL_BIT) != 0;
@@ -2516,11 +2527,15 @@ void Framebuffer::CreateFramebuffer(TextureCacheRuntime& runtime,
     }
     renderpass_key.samples = samples;
 
-    renderpass = runtime.render_pass_cache.Get(renderpass_key);
     render_area.width = (std::min)(render_area.width, width);
     render_area.height = (std::min)(render_area.height, height);
 
     num_color_buffers = static_cast<u32>(num_colors);
+    layer_count = static_cast<u32>((std::max)(num_layers, 1));
+    if (runtime.device.IsKhrDynamicRenderingSupported()) {
+        return;
+    }
+    renderpass = runtime.render_pass_cache.Get(renderpass_key);
     framebuffer = runtime.device.GetLogical().CreateFramebuffer({
         .sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
         .pNext = nullptr,
@@ -2530,8 +2545,55 @@ void Framebuffer::CreateFramebuffer(TextureCacheRuntime& runtime,
         .pAttachments = attachments.data(),
         .width = render_area.width,
         .height = render_area.height,
-        .layers = static_cast<u32>((std::max)(num_layers, 1)),
+        .layers = layer_count,
     });
+}
+
+void Framebuffer::BeginRendering(vk::CommandBuffer cmdbuf) const {
+    std::array<VkRenderingAttachmentInfo, NUM_RT> color_attachment_infos{};
+    for (size_t index = 0; index < num_color_attachments; ++index) {
+        color_attachment_infos[index] = VkRenderingAttachmentInfo{
+            .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+            .pNext = nullptr,
+            .imageView = color_attachments[index],
+            .imageLayout = VK_IMAGE_LAYOUT_GENERAL,
+            .resolveMode = VK_RESOLVE_MODE_NONE,
+            .resolveImageView = VK_NULL_HANDLE,
+            .resolveImageLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+            .loadOp = VK_ATTACHMENT_LOAD_OP_LOAD,
+            .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
+            .clearValue = {},
+        };
+    }
+    const VkRenderingAttachmentInfo depth_attachment_info{
+        .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+        .pNext = nullptr,
+        .imageView = depth_attachment,
+        .imageLayout = VK_IMAGE_LAYOUT_GENERAL,
+        .resolveMode = VK_RESOLVE_MODE_NONE,
+        .resolveImageView = VK_NULL_HANDLE,
+        .resolveImageLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+        .loadOp = VK_ATTACHMENT_LOAD_OP_LOAD,
+        .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
+        .clearValue = {},
+    };
+    const VkRenderingInfo rendering_info{
+        .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
+        .pNext = nullptr,
+        .flags = 0,
+        .renderArea =
+            {
+                .offset = {.x = 0, .y = 0},
+                .extent = render_area,
+            },
+        .layerCount = layer_count,
+        .viewMask = 0,
+        .colorAttachmentCount = num_color_attachments,
+        .pColorAttachments = color_attachment_infos.data(),
+        .pDepthAttachment = has_depth ? &depth_attachment_info : nullptr,
+        .pStencilAttachment = has_stencil ? &depth_attachment_info : nullptr,
+    };
+    cmdbuf.BeginRendering(rendering_info);
 }
 
 void TextureCacheRuntime::AccelerateImageUpload(

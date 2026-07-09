@@ -166,9 +166,42 @@ void Scheduler::DispatchWork() {
 }
 
 void Scheduler::RequestRenderpass(const Framebuffer* framebuffer) {
+    const VkExtent2D render_area = framebuffer->RenderArea();
+    if (device.IsKhrDynamicRenderingSupported()) {
+        std::array<VkImageView, 9> attachment_views{};
+        const auto& color_views = framebuffer->ColorAttachments();
+        for (size_t index = 0; index < color_views.size(); ++index) {
+            attachment_views[index] = color_views[index];
+        }
+        attachment_views[8] = framebuffer->DepthAttachment();
+        if (state.rendering && attachment_views == state.attachment_views &&
+            render_area.width == state.render_area.width &&
+            render_area.height == state.render_area.height) {
+            return;
+        }
+        EndRenderPass();
+        state.attachment_views = attachment_views;
+        state.render_area = render_area;
+        state.rendering = true;
+
+        if (GPU::Logging::IsActive() &&
+            Settings::values.gpu_log_vulkan_calls.GetValue()) {
+            const std::string render_pass_info = fmt::format(
+                "renderArea={}x{}, numImages={}",
+                render_area.width, render_area.height, framebuffer->NumImages());
+            GPU::Logging::GPULogger::GetInstance().LogRenderPassBegin(render_pass_info);
+        }
+
+        Record([framebuffer](vk::CommandBuffer cmdbuf) {
+            framebuffer->BeginRendering(cmdbuf);
+        });
+        num_renderpass_images = framebuffer->NumImages();
+        renderpass_images = framebuffer->Images();
+        renderpass_image_ranges = framebuffer->ImageRanges();
+        return;
+    }
     const VkRenderPass renderpass = framebuffer->RenderPass();
     const VkFramebuffer framebuffer_handle = framebuffer->Handle();
-    const VkExtent2D render_area = framebuffer->RenderArea();
     if (renderpass == state.renderpass && framebuffer_handle == state.framebuffer &&
         render_area.width == state.render_area.width &&
         render_area.height == state.render_area.height) {
@@ -178,6 +211,7 @@ void Scheduler::RequestRenderpass(const Framebuffer* framebuffer) {
     state.renderpass = renderpass;
     state.framebuffer = framebuffer_handle;
     state.render_area = render_area;
+    state.rendering = true;
 
     // Log render pass begin
     if (GPU::Logging::IsActive() &&
@@ -327,7 +361,7 @@ void Scheduler::EndPendingOperations() {
 
 void Scheduler::EndRenderPass()
     {
-        if (!state.renderpass) {
+        if (!state.rendering) {
             return;
         }
 
@@ -345,7 +379,8 @@ void Scheduler::EndRenderPass()
         Record([num_images = num_renderpass_images,
                        images = renderpass_images,
                        ranges = renderpass_image_ranges,
-                       has_transform_feedback = device.IsExtTransformFeedbackSupported()](
+                       has_transform_feedback = device.IsExtTransformFeedbackSupported(),
+                       dynamic_rendering = device.IsKhrDynamicRenderingSupported()](
                           vk::CommandBuffer cmdbuf) {
             std::array<VkImageMemoryBarrier, 9> barriers;
             for (size_t i = 0; i < num_images; ++i) {
@@ -382,7 +417,11 @@ void Scheduler::EndRenderPass()
                         .subresourceRange = range,
                 };
             }
-            cmdbuf.EndRenderPass();
+            if (dynamic_rendering) {
+                cmdbuf.EndRendering();
+            } else {
+                cmdbuf.EndRenderPass();
+            }
             cmdbuf.PipelineBarrier(VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT |
                                    VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, vk::PIPELINE_STAGE_GRAPHICS_COMPUTE,
                                    0, nullptr, nullptr, vk::Span(barriers.data(), num_images));
@@ -400,6 +439,9 @@ void Scheduler::EndRenderPass()
         });
 
         state.renderpass = VkRenderPass{};
+        state.framebuffer = VkFramebuffer{};
+        state.attachment_views = {};
+        state.rendering = false;
         num_renderpass_images = 0;
     }
 

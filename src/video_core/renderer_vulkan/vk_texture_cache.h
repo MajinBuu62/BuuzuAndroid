@@ -158,12 +158,38 @@ public:
                            std::span<ImageView*, NUM_RT> color_buffers, ImageView* depth_buffer,
                            bool is_rescaled = false);
 
+    void BeginRendering(vk::CommandBuffer cmdbuf) const;
+
     [[nodiscard]] VkFramebuffer Handle() const noexcept {
         return *framebuffer;
     }
 
     [[nodiscard]] VkRenderPass RenderPass() const noexcept {
         return renderpass;
+    }
+
+    [[nodiscard]] u32 NumColorAttachments() const noexcept {
+        return num_color_attachments;
+    }
+
+    [[nodiscard]] const std::array<VkImageView, NUM_RT>& ColorAttachments() const noexcept {
+        return color_attachments;
+    }
+
+    [[nodiscard]] const std::array<VkFormat, NUM_RT>& ColorAttachmentFormats() const noexcept {
+        return color_attachment_formats;
+    }
+
+    [[nodiscard]] VkImageView DepthAttachment() const noexcept {
+        return depth_attachment;
+    }
+
+    [[nodiscard]] VkFormat DepthAttachmentFormat() const noexcept {
+        return depth_attachment_format;
+    }
+
+    [[nodiscard]] u32 NumLayers() const noexcept {
+        return layer_count;
     }
 
     [[nodiscard]] VkExtent2D RenderArea() const noexcept {
@@ -216,6 +242,12 @@ private:
     std::array<VkImage, 9> images{};
     std::array<VkImageSubresourceRange, 9> image_ranges{};
     std::array<size_t, NUM_RT> rt_map{};
+    std::array<VkImageView, NUM_RT> color_attachments{};
+    std::array<VkFormat, NUM_RT> color_attachment_formats{};
+    VkImageView depth_attachment{};
+    VkFormat depth_attachment_format = VK_FORMAT_UNDEFINED;
+    u32 num_color_attachments = 0;
+    u32 layer_count = 1;
     bool has_depth{};
     bool has_stencil{};
     bool is_rescaled{};
