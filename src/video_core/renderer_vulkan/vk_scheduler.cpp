@@ -207,9 +207,9 @@ void Scheduler::RequestRenderpass(const Framebuffer* framebuffer) {
                 .resolveMode = VK_RESOLVE_MODE_NONE,
                 .resolveImageView = VK_NULL_HANDLE,
                 .resolveImageLayout = VK_IMAGE_LAYOUT_UNDEFINED,
-                .loadOp = VK_ATTACHMENT_LOAD_OP_LOAD,
+                .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
                 .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
-                .clearValue = {},
+                .clearValue = {.color = {.float32 = {1.0f, 0.0f, 1.0f, 1.0f}}},
             };
         }
         const VkRenderingAttachmentInfo depth_info{
