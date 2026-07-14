@@ -1,4 +1,4 @@
-name: Build Eden Android 0.2.0 Release w Cache
+name: Build Eden Android 0.2.0MOD
 
 on:
   workflow_dispatch:
