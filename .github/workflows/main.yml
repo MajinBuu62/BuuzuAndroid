@@ -10,7 +10,7 @@ jobs:
       - name: Checkout repository (full history)
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0        # Required to checkout the specific older commit
+          fetch-depth: 0        
           submodules: recursive
 
       - name: Checkout specific commit
@@ -22,7 +22,7 @@ jobs:
       - name: Apply Custom Patch
         shell: bash
         run: |
-          # Uses github.workspace to find the patch in the root of your repo
+          # Use the absolute workspace path so Git can find it regardless of the checkout state
           git apply "${{ github.workspace }}/NS2.patch"
           echo "Patch applied successfully."
 
