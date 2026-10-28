@@ -1,7 +1,7 @@
 name: Build Eden with Patch
 
 on:
-  workflow_dispatch: # Allows you to trigger it manually
+  workflow_dispatch:
 
 jobs:
   build-windows:
@@ -10,7 +10,7 @@ jobs:
       - name: Checkout repository (full history)
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0        
+          fetch-depth: 0
           submodules: recursive
 
       - name: Checkout specific commit
@@ -22,10 +22,7 @@ jobs:
       - name: Download and Apply Custom Patch
         shell: bash
         run: |
-          # Download the patch directly from Catbox
           curl -L -f -o NS2.patch "https://files.catbox.moe/h0vz6e.patch"
-          
-          # Apply the patch
           git apply NS2.patch
           echo "Patch applied successfully."
 
@@ -38,23 +35,9 @@ jobs:
       - name: Install Vulkan SDK
         shell: pwsh
         run: |
-          # Check for the script in the updated .ci/windows/ path
-          if (Test-Path "./.ci/windows/install-vulkan-sdk.ps1") {
-            ./.ci/windows/install-vulkan-sdk.ps1
-          } 
-          # Fallback to the older .ci/ path just in case
-          elseif (Test-Path "./.ci/install-vulkan-sdk.ps1") {
-            ./.ci/install-vulkan-sdk.ps1
-          } 
-          else {
-            Write-Host "Vulkan SDK install script not found. Relying on CMake to find it."
-          }
-
-      - name: Setup glslangValidator
-        shell: pwsh
-        run: |
-          Invoke-WebRequest -Uri "https://raw.githubusercontent.com/HansKristian-Work/vkd3d-proton-ci/main/glslangValidator.exe" -OutFile "glslangValidator.exe"
-          Write-Output "$pwd" | Out-File -FilePath "${Env:GITHUB_PATH}" -Append
+          choco install vulkan-sdk -y
+          $vulkanPath = [System.Environment]::GetEnvironmentVariable('VULKAN_SDK', 'Machine')
+          Write-Output "$vulkanPath\Bin" | Out-File -FilePath "${Env:GITHUB_PATH}" -Append
 
       - name: CMake Configure
         shell: bash
@@ -68,7 +51,8 @@ jobs:
             -DUSE_DISCORD_PRESENCE=ON \
             -DYUZU_USE_BUNDLED_VCPKG=ON \
             -DYUZU_USE_BUNDLED_SDL2=ON \
-            -DUSE_CCACHE=ON
+            -DUSE_CCACHE=ON \
+            -DYUZU_CMD=OFF
 
       - name: Build Eden
         shell: bash
@@ -79,3 +63,4 @@ jobs:
         with:
           name: eden-windows-patched
           path: build/bin/
+          if-no-files-found: error
