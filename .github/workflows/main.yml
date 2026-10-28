@@ -1,4 +1,4 @@
-name: Build Eden with Patch
+name: Build Eden with Patch 7
 
 on:
   workflow_dispatch: # Allows you to trigger it manually
@@ -19,11 +19,14 @@ jobs:
           git checkout 05f36d9
           echo "Checked out to 05f36d9"
 
-      - name: Apply Custom Patch
+      - name: Download and Apply Custom Patch
         shell: bash
         run: |
-          # Use the absolute workspace path so Git can find it regardless of the checkout state
-          git apply "${{ github.workspace }}/NS2.patch"
+          # Download the patch directly from Catbox
+          curl -L -f -o NS2.patch "https://files.catbox.moe/h0vz6e.patch"
+          
+          # Apply the patch
+          git apply NS2.patch
           echo "Patch applied successfully."
 
       - name: Set up MSVC
