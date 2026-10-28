@@ -50,6 +50,12 @@ jobs:
             Write-Host "Vulkan SDK install script not found. Relying on CMake to find it."
           }
 
+      - name: Setup glslangValidator
+        shell: pwsh
+        run: |
+          Invoke-WebRequest -Uri "https://raw.githubusercontent.com/HansKristian-Work/vkd3d-proton-ci/main/glslangValidator.exe" -OutFile "glslangValidator.exe"
+          Write-Output "$pwd" | Out-File -FilePath "${Env:GITHUB_PATH}" -Append
+
       - name: CMake Configure
         shell: bash
         run: |
