@@ -1,4 +1,4 @@
-name: Build Eden with Patch 7
+name: Build Eden with Patch
 
 on:
   workflow_dispatch: # Allows you to trigger it manually
@@ -36,8 +36,19 @@ jobs:
         run: choco install ccache ninja wget cygwin -y
 
       - name: Install Vulkan SDK
-        run: ./.ci/install-vulkan-sdk.ps1
         shell: pwsh
+        run: |
+          # Check for the script in the updated .ci/windows/ path
+          if (Test-Path "./.ci/windows/install-vulkan-sdk.ps1") {
+            ./.ci/windows/install-vulkan-sdk.ps1
+          } 
+          # Fallback to the older .ci/ path just in case
+          elseif (Test-Path "./.ci/install-vulkan-sdk.ps1") {
+            ./.ci/install-vulkan-sdk.ps1
+          } 
+          else {
+            Write-Host "Vulkan SDK install script not found. Relying on CMake to find it."
+          }
 
       - name: CMake Configure
         shell: bash
