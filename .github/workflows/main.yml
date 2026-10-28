@@ -1,7 +1,7 @@
-name: Build Eden with Patch (Corrected)
+name: Build Eden with Patch
 
 on:
-  workflow_dispatch:
+  workflow_dispatch: # Allows you to trigger it manually
 
 jobs:
   build-windows:
@@ -10,7 +10,7 @@ jobs:
       - name: Checkout repository (full history)
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0        # Key: fetch full history so the specified commit can be checked out
+          fetch-depth: 0        # Required to checkout the specific older commit
           submodules: recursive
 
       - name: Checkout specific commit
@@ -22,8 +22,9 @@ jobs:
       - name: Apply Custom Patch
         shell: bash
         run: |
-          git apply NS2.patch
-          echo "Patch applied."
+          # Uses github.workspace to find the patch in the root of your repo
+          git apply "${{ github.workspace }}/NS2.patch"
+          echo "Patch applied successfully."
 
       - name: Set up MSVC
         uses: ilammy/msvc-dev-cmd@v1
