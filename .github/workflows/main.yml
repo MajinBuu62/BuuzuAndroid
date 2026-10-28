@@ -1,0 +1,60 @@
+name: Build Eden with Patch (Corrected)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout repository (full history)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0        # Key: fetch full history so the specified commit can be checked out
+          submodules: recursive
+
+      - name: Checkout specific commit
+        shell: bash
+        run: |
+          git checkout 05f36d9
+          echo "Checked out to 05f36d9"
+
+      - name: Apply Custom Patch
+        shell: bash
+        run: |
+          git apply NS2.patch
+          echo "Patch applied."
+
+      - name: Set up MSVC
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Install extra tools
+        run: choco install ccache ninja wget cygwin -y
+
+      - name: Install Vulkan SDK
+        run: ./.ci/install-vulkan-sdk.ps1
+        shell: pwsh
+
+      - name: CMake Configure
+        shell: bash
+        run: |
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+            -DYUZU_USE_BUNDLED_QT=ON \
+            -DENABLE_QT_TRANSLATION=ON \
+            -DUSE_DISCORD_PRESENCE=ON \
+            -DYUZU_USE_BUNDLED_VCPKG=ON \
+            -DYUZU_USE_BUNDLED_SDL2=ON \
+            -DUSE_CCACHE=ON
+
+      - name: Build Eden
+        shell: bash
+        run: cmake --build build
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: eden-windows-patched
+          path: build/bin/
